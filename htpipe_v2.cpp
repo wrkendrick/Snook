@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <numeric>
 #include <vector>
+#include <algorithm>
 
 using namespace std;
 
@@ -246,7 +247,7 @@ double dpa_adiab(double temp, double q_total)
 }
 
 // establishes: dpic, dpvc, dplc
-double dpc_cond(double q_total, int i, double q1_array [], double distance [])
+double dpc_cond(double q_total, int i, std::vector<double> &q1_array, std::vector<double> &distance)
 {
 	double qhfg = q_total/hfg;
     double qa = q1_array[i];
@@ -371,8 +372,10 @@ void variable_creation ()
 	
 	//q_total = 15122; // total power in watts
 	q_total = 0;
-	double qe_array_setter [] = {-4.887744e+02,-4.945744e+02,-5.190788e+02,-5.369742e+02,-5.914563e+02,-6.718340e+02,-8.335517e+02,-1.140773e+03,-1.819467e+03,2.187233e+03};
+	double value_to_set = 1500;
+	double qe_array_setter [] = {value_to_set,value_to_set,value_to_set,value_to_set,value_to_set,value_to_set,value_to_set,value_to_set,value_to_set,value_to_set};
 	int len = *(&qe_array_setter + 1) - qe_array_setter;
+	qe_array.clear();
 	for (int i=0; i < len; i++) {
 		qe_array.push_back(qe_array_setter[i]);
 	}
@@ -410,16 +413,16 @@ int main ()
 	
 	// Begin true run
 	int total_mesh = cinc+ainc+einc+1;
-	double distance [total_mesh] = { };
-	double dpi_array [total_mesh] = { };
-	double dpv_array [total_mesh] = { };
-	double dpl_array [total_mesh] = { };
-	double dpv_total [total_mesh] = { };
-	double dpa_array [total_mesh] = { };
-	double dp_array [total_mesh] = { };
-	double q1_array [total_mesh] = { };
-	double pvap [total_mesh] = { };
-	double tempx [total_mesh] = { };
+	std::vector<double> distance (total_mesh);
+	std::vector<double> dpi_array (total_mesh);
+	std::vector<double> dpv_array (total_mesh);
+	std::vector<double> dpl_array (total_mesh);
+	std::vector<double> dpv_total (total_mesh);
+	std::vector<double> dpa_array (total_mesh);
+	std::vector<double> dp_array (total_mesh);
+	std::vector<double> q1_array (total_mesh);
+	std::vector<double> pvap (total_mesh);
+	std::vector<double> tempx (total_mesh);
 	for (int i=0; i<(einc+1); i++) {
 	    distance [i] = i*le/einc;
 	}
@@ -478,7 +481,7 @@ int main ()
 	    for (int i=icondb-1; i<iconde; i++){
 	        double qout = (tempx[i]-t_sink)/rcond; // heat out in mesh i
 	        if (qout < 0.0) {    // if t_sink > tempx, guess temperature is too high
-	            cout << "ierror 2";
+	            std::cout << "ierror 2";
 	            thigh = tguess;
 	            break;
 			}
@@ -489,7 +492,7 @@ int main ()
 	        // end of dpcond
 	        pvap[i+1] = pvap[i]-dpc;
 	        if (pvap[i+1] < 0.0) {
-	            cout << "ierror 3";
+	            std::cout << "ierror 3";
 	            break;
 			}
 	        tempx[i+1] = saturation_temperature(pvap[i+1]);
@@ -514,6 +517,61 @@ int main ()
 		}
 	    printf("iteration %d %f %f %f \n", k, qcond, q_total, tguess);
 	}
+	
+	if (std::count(tempx.begin(),tempx.end(),thigh) || std::count(tempx.begin(),tempx.end(),tlow)) {
+        std::cout << "SWITCHING TO NON-EVAPORATIVE MODE: \n";
+		variable_creation();
+        for (int k=0; k<20; k++) {
+	        double tguess = (thigh+tlow)/2;
+        
+	        //// EVAPORATOR
+	        fluid_properties(tguess);
+            double rcond = (1/h_sink + radius_out*abd/k_wall + radius_in/cfluid*abc)/cond_area;
+	        tempx[einc]= tguess;
+            q1_array[einc] = q_total;
+	        for (int j=0; j<einc; j++) {
+                int i = einc-1-j;
+	            q1_array[i] = q1_array[i+1]+qe_array[i];
+	            tempx[i] = ((qe_array[i]/(cfluid*cond_area))*(distance[i+1]-distance[i])) + tempx[i+1];
+            }
+        
+	        //// ADIABATIC
+	        for (int i=einc+1; i<iadiab+1; i++) { // boundary 6 and 8
+	            q1_array[i] = q1_array[i-1];
+	            tempx[i] = tempx[i-1];
+            }
+	        //q1_array[icondb-1] = q_total;
+        
+	        //// CONDENSOR - convective coupling
+	        double qcond = 0.0;
+	        for (int i=icondb-1; i<iconde; i++){
+	            double qout = (tempx[i]-t_sink)/rcond; // heat out in mesh i
+	            if (qout < 0.0) {    // if t_sink > tempx, guess temperature is too high
+	                std::cout << "ierror 2";
+	                thigh = tguess;
+	                break;
+                }
+	            qcond = qcond + qout;
+	            q1_array[i+1] = q1_array[i]-qout;
+	            // end of dpcond
+	            tempx[i+1] = ((-1*qout/(cfluid*cond_area))*(distance[i+1]-distance[i])) + tempx[i];
+	            fluid_properties(tempx[i+1]);
+	            // conduction heat sink
+	            rcond = (1/h_sink + radius_out*abd/k_wall + radius_in/cfluid*abc)/cond_area; // heat transfer from inside to outside
+            }
+	        if (abs((qcond-q_total)/q_total)<0.001) {
+	            printf("Converged %d, %f, %f, %f \n", k, qcond, q_total, tguess);
+	            break;
+            }
+	        else if (qcond > q_total) {
+	            thigh = tguess;
+            }
+	        else {
+	            tlow = tguess;
+            }
+	        printf("iteration %d %f %f %f \n", k, qcond, q_total, tguess);
+        }
+    }
 	
 	// add limit checks
 	// capillary, sonic, boiling and entrainment limits

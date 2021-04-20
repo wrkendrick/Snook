@@ -123,6 +123,15 @@ protected:
 
   /// The number of samples to be taken
   unsigned int _num_samples;
+  
+  /// Counter to ensure that the first real Q calculation is ignored because as of 04/20/2021 it is broken
+  unsigned int _iteration_counter;
+  
+  ///
+  double _dampening_factor;
+  
+  ///
+  double _initial_temp;
 
   ///@{ The variables used to write out samples of the least squares fit
   VectorPostprocessorValue * _sample_x;
@@ -151,6 +160,7 @@ protected:
   double rv;
   double av;
   double q_total;
+  double old_q_total;
   ///@}
   
   ///@{ fluids_properties() variables

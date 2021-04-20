@@ -104,9 +104,10 @@
 
 [Executioner]
   type = Steady
-  solve_type = PJFNK
+  solve_type = JFNK
   l_max_its = 1000
   nl_max_its = 100
+  line_search = none
 []
 
 [Postprocessors]
@@ -122,70 +123,70 @@
 	  variable = temp
 	  boundary = 'HP-0'
 	  diffusivity = thermal_conductivity
-	  execute_on = 'INITIAL LINEAR FINAL'
+	  execute_on = 'INITIAL NONLINEAR FINAL'
   [../]
   [./heatFlux_1]
     type = SideFluxIntegral
 	  variable = temp
 	  boundary = 'HP-1'
 	  diffusivity = thermal_conductivity
-	  execute_on = 'INITIAL LINEAR FINAL'
+	  execute_on = 'INITIAL NONLINEAR FINAL'
   [../]
   [./heatFlux_2]
     type = SideFluxIntegral
 	  variable = temp
 	  boundary = 'HP-2'
 	  diffusivity = thermal_conductivity
-	  execute_on = 'INITIAL LINEAR FINAL'
+	  execute_on = 'INITIAL NONLINEAR FINAL'
   [../]
   [./heatFlux_3]
     type = SideFluxIntegral
 	  variable = temp
 	  boundary = 'HP-3'
 	  diffusivity = thermal_conductivity
-	  execute_on = 'INITIAL LINEAR FINAL'
+	  execute_on = 'INITIAL NONLINEAR FINAL'
   [../]
   [./heatFlux_4]
     type = SideFluxIntegral
 	  variable = temp
 	  boundary = 'HP-4'
 	  diffusivity = thermal_conductivity
-	  execute_on = 'INITIAL LINEAR FINAL'
+	  execute_on = 'INITIAL NONLINEAR FINAL'
   [../]
   [./heatFlux_5]
     type = SideFluxIntegral
 	  variable = temp
 	  boundary = 'HP-5'
 	  diffusivity = thermal_conductivity
-	  execute_on = 'INITIAL LINEAR FINAL'
+	  execute_on = 'INITIAL NONLINEAR FINAL'
   [../]
   [./heatFlux_6]
     type = SideFluxIntegral
 	  variable = temp
 	  boundary = 'HP-6'
 	  diffusivity = thermal_conductivity
-	  execute_on = 'INITIAL LINEAR FINAL'
+	  execute_on = 'INITIAL NONLINEAR FINAL'
   [../]
   [./heatFlux_7]
     type = SideFluxIntegral
 	  variable = temp
 	  boundary = 'HP-7'
 	  diffusivity = thermal_conductivity
-	  execute_on = 'INITIAL LINEAR FINAL'
+	  execute_on = 'INITIAL NONLINEAR FINAL'
   [../]
   [./heatFlux_8]
     type = SideFluxIntegral
 	  variable = temp
 	  boundary = 'HP-8'
 	  diffusivity = thermal_conductivity
-	  execute_on = 'INITIAL LINEAR FINAL'
+	  execute_on = 'INITIAL NONLINEAR FINAL'
   [../]
   [./heatFlux_9]
     type = SideFluxIntegral
 	  variable = temp
 	  boundary = 'HP-9'
 	  diffusivity = thermal_conductivity
-	  execute_on = 'INITIAL LINEAR FINAL'
+	  execute_on = 'INITIAL NONLINEAR FINAL'
   [../]
   [./heatpipe_min]
     type = NodalExtremeValue
@@ -210,7 +211,7 @@
   [./flux_aggregate]
     type = VectorOfPostprocessors
     postprocessors = 'heatFlux_0 heatFlux_1 heatFlux_2 heatFlux_3 heatFlux_4 heatFlux_5 heatFlux_6 heatFlux_7 heatFlux_8 heatFlux_9'
-    execute_on = 'INITIAL LINEAR FINAL'
+    execute_on = 'INITIAL NONLINEAR FINAL'
   [../]
   [./adjusted_LSF]
     type = LeastSquaresFit
@@ -219,7 +220,7 @@
     y_name = 'flux_aggregate'
     x_vals = '-25.0 -20.0 -15.0 -10.0 -5.0 0.0 5.0 10.0 15.0 20.0 25.0'
     num_samples = 11
-    execute_on = 'INITIAL LINEAR FINAL'
+    execute_on = 'INITIAL NONLINEAR FINAL'
   [../]
 []
 

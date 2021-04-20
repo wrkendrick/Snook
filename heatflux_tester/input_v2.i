@@ -28,18 +28,6 @@
 	  boundary = BC_left
     value = 300.0
   [../]
-  [./BC_midleft]
-    type = DirichletBC
-	  variable = temp
-	  boundary = BC_midleft
-    value = 350.0
-  [../]
-  [./BC_midright]
-    type = DirichletBC
-	  variable = temp
-	  boundary = BC_midright
-    value = 350.0
-  [../]
   [./BC_right]
     type = DirichletBC
 	  variable = temp
@@ -81,24 +69,10 @@
 	  diffusivity = thermal_conductivity
 	  execute_on = 'INITIAL NONLINEAR FINAL'
   [../]
-  [./heatFlux_averageTest]
-    type = SideFluxAverage
-	  variable = temp
-	  boundary = BC_midleft
-	  diffusivity = thermal_conductivity
-	  execute_on = 'INITIAL NONLINEAR FINAL'
-  [../]
   [./heatFlux_midleft]
     type = SideFluxIntegral
 	  variable = temp
 	  boundary = BC_midleft
-	  diffusivity = thermal_conductivity
-	  execute_on = 'INITIAL NONLINEAR FINAL'
-  [../]
-  [./heatFlux_midright]
-    type = SideFluxIntegral
-	  variable = temp
-	  boundary = BC_midright
 	  diffusivity = thermal_conductivity
 	  execute_on = 'INITIAL NONLINEAR FINAL'
   [../]

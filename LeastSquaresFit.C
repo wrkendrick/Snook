@@ -25,6 +25,8 @@ LeastSquaresFit::validParams()
       "The vectorpostprocessor on whose values we perform a least squares fit");
   params.addRequiredParam<std::string>("x_name", "The name of the independent variable");
   params.addRequiredParam<std::string>("y_name", "The name of the dependent variable");
+  params.addRequiredParam<double>("dampening_factor", "The dampening factor that affects change in q_total");
+  params.addRequiredParam<double>("initial_temp", "Initial value of the temperature variable");
   params.addParam<unsigned int>("num_samples", "The number of samples to be output");
   MooseEnum output_type("Coefficients Samples", "Coefficients");
   params.addClassDescription("Performs a polynomial least squares fit on the data contained in "
@@ -42,6 +44,9 @@ LeastSquaresFit::LeastSquaresFit(const InputParameters & parameters)
     _x_values(getParam<std::vector<Real>>("x_vals")), ///***
     _y_values(getVectorPostprocessorValue("vectorpostprocessor", _y_name)),
     _num_samples(0),
+    _iteration_counter(0),
+    _dampening_factor(getParam<double>("dampening_factor")),
+    _initial_temp(getParam<double>("initial_temp")),
     _sample_x(NULL),
     _sample_y(NULL)
 {
@@ -77,7 +82,7 @@ LeastSquaresFit::saturation_temperature(double pressure)
 		for (int i=4; i > -1; i--) {
 			alt_pv = temp*alt_pv + pvc[i];
 		}
-        alt_pv = 10.0*exp(alt_pv);
+    alt_pv = 10.0*exp(alt_pv);
 		if (abs(alt_pv-pressure) < 0.001) {
 			break;
 		}
@@ -101,13 +106,13 @@ LeastSquaresFit::fmax(double fmx, double spec_heat_ratio, double inlet_mach)
 	for (int i = 0; i < 50; i++) {
 		double checkval1 = (spec_heat_ratio+1.0)*phi/(2*(1.0 + phi*(spec_heat_ratio-1.0)/2.0));
 		double f = (1.0-phi)/(spec_heat_ratio*phi) + (spec_heat_ratio+1.0)*log((spec_heat_ratio+1.0)*phi/(2*(1.0 + phi*(spec_heat_ratio-1.0)/2.0)))/(2.0*spec_heat_ratio) - fmx;
-		if (abs(f) < 0.0001) {
+		if (std::abs(f) < 0.0001) {
 			break;
 		}
 		double df = (spec_heat_ratio+1.0)/(2.0*spec_heat_ratio*phi*(1.0+(spec_heat_ratio-1.0)*phi/2.0)) - (1.0/(spec_heat_ratio*pow(phi,2)));
 		double phi_new = phi - (f/df);
 		if (phi_new <= 0.0) {
-			phi_new = 1e-6;
+		  phi_new = 1e-6;
 		}
 		if (inlet_mach < 1.0 and phi_new > 1.0) {
 			phi_new = 0.9999;
@@ -257,22 +262,22 @@ void
 LeastSquaresFit::dpc_cond(double q_total, int i, std::vector<double> &q1_array, std::vector<double> &distance)
 {
 	double qhfg = q_total/hfg;
-    double qa = q1_array[i];
-    double qb = q1_array[i+1];
-    double lc1 = lc/cinc;
-    double cfract = (distance[i]-le-la)/lc;
-    double qrad = qa-qb;
-    double qhfg1 = (qa+qb)/(2.0*hfg);
-    dplc = 6.0*mu_l*qhfg1*lc1/(M_PI*rv*pow(annulus_thickness,3)*rho_l);
-    double rreyc = -qhfg/(2.0*M_PI*lc1*mu_v);
-    double reyc = 4.0*qhfg1/(M_PI*2.0*rv*mu_v);
-    double vci = qa/(hfg*av*rho_v);
-    double vcii = qb/(hfg*av*rho_v);
-    double f = friction(reyc);
-    dpvc = 4.0*f*(lc1/2.0)*rho_v*pow(vci,2)/(4.0*rv);
-    double lparam = (2.0*le+4.0*la)/lc;
-    double recov = (rreyc+2.0)/(1.23*rreyc-lparam);
-    dpic = -(pow(vci,2)-pow(vcii,2))*rho_v*recov;
+  double qa = q1_array[i];
+  double qb = q1_array[i+1];
+  double lc1 = lc/cinc;
+  double cfract = (distance[i]-le-la)/lc;
+  double qrad = qa-qb;
+  double qhfg1 = (qa+qb)/(2.0*hfg);
+  dplc = 6.0*mu_l*qhfg1*lc1/(M_PI*rv*pow(annulus_thickness,3)*rho_l);
+  double rreyc = -qhfg/(2.0*M_PI*lc1*mu_v);
+  double reyc = 4.0*qhfg1/(M_PI*2.0*rv*mu_v);
+  double vci = qa/(hfg*av*rho_v);
+  double vcii = qb/(hfg*av*rho_v);
+  double f = friction(reyc);
+  dpvc = 4.0*f*(lc1/2.0)*rho_v*pow(vci,2)/(4.0*rv);
+  double lparam = (2.0*le+4.0*la)/lc;
+  double recov = (rreyc+2.0)/(1.23*rreyc-lparam);
+  dpic = -(pow(vci,2)-pow(vcii,2))*rho_v*recov;
 }
 
 void
@@ -284,11 +289,13 @@ double
 LeastSquaresFit::entrainment_limit(double temp)
 {
   std::cout << "entrainment limit\n";
+  return 0.0;
 }
 double
 LeastSquaresFit::boiling_limit(double temp)
 {
   std::cout << "boiling limit\n";
+  return 0.0;
 }
 
 void
@@ -323,21 +330,32 @@ LeastSquaresFit::variable_creation()
 	int len = *(&qe_array_setter + 1) - qe_array_setter;
   qe_array.clear();
 	for (int i=0; i < len_v2; i++) {
+    std::cout << "i: " << i << "| q: " << _y_values[i] << "\n";
+    fflush(stdout);
 		qe_array.push_back(std::abs(_y_values[i]));
+    std::cout << "i: " << i << "| x: " << _x_values[i] << "\n";
+    fflush(stdout);
 	}
 	q_total = accumulate(qe_array.begin(), qe_array.end(), q_total);
+  double q_total_change_crit = 0.001;
+  if (old_q_total>1.0 && std::abs(q_total-old_q_total)/q_total>5.0){
+    q_total = ((q_total-old_q_total)/_dampening_factor) + old_q_total;
+  }
 	if (q_total == 0) {
 		printf ("SOMETHING WENT WRONG");
 	}
 	else {
+    printf("old q total = %f \n", old_q_total);
+    fflush(stdout);
 		printf("q total = %f \n", q_total);
+    fflush(stdout);
 	}
 	
 	if (t_sink > 400.0) {   // for potassium
-    	tlow = t_sink;
+    tlow = t_sink;
 	}
 	else {
-    	tlow = 400.0;
+    tlow = 400.0;
 	}
 	thigh = 1800.0;  // for potassium
 }
@@ -350,9 +368,9 @@ LeastSquaresFit::execute()
     mooseError("The distance placeholders need to number one more than the number of flux integrals");  
   }
   
-    //mooseError("In LeastSquresFit size of data in x_values and y_values must be equal");
+  //mooseError("In LeastSquresFit size of data in x_values and y_values must be equal");
   //if (_x_values.size() == 0)
-    //mooseError("In LeastSquresFit size of data in x_values and y_values must be > 0");
+  //mooseError("In LeastSquresFit size of data in x_values and y_values must be > 0");
   
   // variables only for the main run:
 	variable_creation();
@@ -365,7 +383,6 @@ LeastSquaresFit::execute()
 	int icondb = einc+ainc+1; // index of beginning of condenser
 	int iconde = einc+ainc+cinc; // index of end of condenser
 	int iadiab = einc+ainc;
-	
 	
 	// Begin true run
 	int total_mesh = cinc+ainc+einc+1;
@@ -380,22 +397,29 @@ LeastSquaresFit::execute()
 	std::vector<double> pvap (total_mesh);
 	std::vector<double> tempx (total_mesh);
 	for (int i=0; i<(einc+1); i++) {
-	    distance [i] = i*le/einc;
+	  distance [i] = i*le/einc;
 	}
 	for (int i=(einc+1); i<(einc+ainc+1); i++) {
-	    distance [i] = le + (i-(einc))*la/ainc;
+	  distance [i] = le + (i-(einc))*la/ainc;
 	}
 	for (int i=(einc+ainc+1); i<total_mesh; i++) {
-	    distance[i] = le + la + (i-(einc+ainc))*lc/cinc;
+	  distance[i] = le + la + (i-(einc+ainc))*lc/cinc;
 	}
 	
 	// only once
 	double b = (radius_in+rv+screen_thickness)*M_PI;
 	double rh = annulus_thickness*b/(annulus_thickness+b);
 	double al = annulus_thickness*b;
-	
-	// iteration on T evaporator exit
-	for (int k=0; k<20; k++) {
+  
+  if (_iteration_counter < 2) {
+    for (int i=0; i<iconde; i++) {
+      tempx[i] = _initial_temp;
+    }
+    q_total = 0.0;
+  }
+  else {
+	  // iteration on T evaporator exit
+	  for (int k=0; k<20; k++) {
 	    double tguess = (thigh+tlow)/2;  // guess temperature at the end of evaporator, iterate until q in equals q out
 	    //// EVAPORATOR
 	    fluid_properties(tguess);
@@ -406,73 +430,134 @@ LeastSquaresFit::execute()
 	    pvap[0] = pv + dpe;
 	    tempx[0]= saturation_temperature(pvap[0]);
 	    for (int i=1; i<einc+1; i++) {  // boundary 1 to 5
-	        q1_array[i] = q1_array[i-1]+qe_array[i-1];
-	        dpe_evap(q1_array[i]);
-	        dpi_array[i] = dpie;
-	        dpv_array[i] = dpve;
-	        dpl_array[i] = dple;
-	        double dpe = dpi_array[i]+dpv_array[i];
-	        pvap[i] = pvap[0]-dpe;
-	        tempx[i] = saturation_temperature(pvap[i]);
-	        dpv_total[i] = dpv_array[i]+dpi_array[i]+dpa_array[i];
-		}
+	      q1_array[i] = q1_array[i-1]+qe_array[i-1];
+	      dpe_evap(q1_array[i]);
+	      dpi_array[i] = dpie;
+	      dpv_array[i] = dpve;
+	      dpl_array[i] = dple;
+	      double dpe = dpi_array[i]+dpv_array[i];
+	      pvap[i] = pvap[0]-dpe;
+	      tempx[i] = saturation_temperature(pvap[i]);
+	      dpv_total[i] = dpv_array[i]+dpi_array[i]+dpa_array[i];
+	  	}
 	    //// ADIABATIC
 	    dpa_adiab(tguess, q_total);
 	    for (int i=einc+1; i<iadiab+1; i++) { // boundary 6 and 8
-	        double afract = (distance[i]-le)/la;
-	        dpa_array[i] = dpa*afract;
-	        dpl_array[i] = dpl_array[i-1] + dpla/ainc;
-	        q1_array[i] = q1_array[i-1];
-	        dpi_array[i] = dpi_array[i-1];
-	        dpv_array[i] = dpv_array[i-1];
-	        pvap[i] = pvap[einc] - dpa_array[i];
-	        tempx[i] = saturation_temperature(pvap[i]);
-	        dpv_total[i] = dpv_array[i]+dpi_array[i]+dpa_array[i];
-		}
+	      double afract = (distance[i]-le)/la;
+	      dpa_array[i] = dpa*afract;
+	      dpl_array[i] = dpl_array[i-1] + dpla/ainc;
+	      q1_array[i] = q1_array[i-1];
+	      dpi_array[i] = dpi_array[i-1];
+	      dpv_array[i] = dpv_array[i-1];
+	      pvap[i] = pvap[einc] - dpa_array[i];
+	      tempx[i] = saturation_temperature(pvap[i]);
+	      dpv_total[i] = dpv_array[i]+dpi_array[i]+dpa_array[i];
+	  	}
 	    pvap[icondb-1] = pv-dpa;
 	    tempx[icondb-1] = saturation_temperature(pvap[icondb-1]);
 	    q1_array[icondb-1] = q_total;
 	    //// CONDENSOR - convective coupling
 	    double qcond = 0.0;
 	    for (int i=icondb-1; i<iconde; i++){
+	      double qout = (tempx[i]-t_sink)/rcond; // heat out in mesh i
+	      if (qout < 0.0) {    // if t_sink > tempx, guess temperature is too high
+	        std::cout << "ierror 2";
+	        thigh = tguess;
+	        break;
+	  		}
+	      qcond = qcond + qout;
+	      q1_array[i+1] = q1_array[i]-qout;
+	      dpc_cond(q_total, i, q1_array, distance);
+	      double dpc = dpic+dpvc;
+	      // end of dpcond
+	      pvap[i+1] = pvap[i]-dpc;
+	      if (pvap[i+1] < 0.0) {
+	        std::cout << "ierror 3";
+	        break;
+	  		}
+	      tempx[i+1] = saturation_temperature(pvap[i+1]);
+	      fluid_properties(tempx[i+1]);
+	      // conduction heat sink
+	      rcond = (1/h_sink + radius_out*abd/k_wall + radius_in/cfluid*abc)/cond_area; // heat transfer from inside to outside
+	      dpi_array[i+1] = dpi_array[i]+dpic;
+	      dpv_array[i+1] = dpv_array[i]+dpvc;
+	      dpa_array[i+1] = dpa_array[i];
+	      dpl_array[i+1] = dpl_array[i]+dplc;
+	      dpv_total[i+1] = dpv_total[i]+dpc;
+	  	}
+      //// CHECK CONVERGENCE
+	    if (std::abs((qcond-q_total)/q_total)<0.001) {
+	      printf("Converged %d, %f, %f, %f \n", k, qcond, q_total, tguess);
+	      break;
+	  	}
+	    else if (qcond > q_total) {
+	      thigh = tguess;
+	  	}
+	    else {
+	      tlow = tguess;
+	  	}
+	    printf("iteration %d %f %f %f \n", k, qcond, q_total, tguess);
+	  }
+    
+    if (std::count(tempx.begin(),tempx.end(),thigh) || std::count(tempx.begin(),tempx.end(),tlow)) {
+      std::cout << "SWITCHING TO NON-EVAPORATIVE MODE: \n";
+      fflush(stdout);
+      variable_creation();
+      for (int k=0; k<20; k++) {
+	      double tguess = (thigh+tlow)/2;
+        
+	      //// EVAPORATOR
+	      fluid_properties(tguess);
+        double rcond = (1/h_sink + radius_out*abd/k_wall + radius_in/cfluid*abc)/cond_area;
+	      tempx[einc]= tguess;
+        q1_array[einc] = q_total;
+	      for (int j=0; j<einc; j++) {
+          int i = einc-1-j;
+	        q1_array[i] = q1_array[i+1]+qe_array[i];
+	        tempx[i] = ((qe_array[i]/(cfluid*cond_area))*(distance[i+1]-distance[i])) + tempx[i+1];
+        }
+        
+	      //// ADIABATIC
+	      for (int i=einc+1; i<iadiab+1; i++) { // boundary 6 and 8
+	        q1_array[i] = q1_array[i-1];
+	        tempx[i] = tempx[i-1];
+        }
+	      //q1_array[icondb-1] = q_total;
+        
+	      //// CONDENSOR - convective coupling
+	      double qcond = 0.0;
+	      for (int i=icondb-1; i<iconde; i++){
 	        double qout = (tempx[i]-t_sink)/rcond; // heat out in mesh i
 	        if (qout < 0.0) {    // if t_sink > tempx, guess temperature is too high
 	            std::cout << "ierror 2";
 	            thigh = tguess;
 	            break;
-			}
+          }
 	        qcond = qcond + qout;
 	        q1_array[i+1] = q1_array[i]-qout;
-	        dpc_cond(q_total, i, q1_array, distance);
-	        double dpc = dpic+dpvc;
 	        // end of dpcond
-	        pvap[i+1] = pvap[i]-dpc;
-	        if (pvap[i+1] < 0.0) {
-	            std::cout << "ierror 3";
-	            break;
-			}
-	        tempx[i+1] = saturation_temperature(pvap[i+1]);
+	        tempx[i+1] = ((-1*qout/(cfluid*cond_area))*(distance[i+1]-distance[i])) + tempx[i];
 	        fluid_properties(tempx[i+1]);
 	        // conduction heat sink
 	        rcond = (1/h_sink + radius_out*abd/k_wall + radius_in/cfluid*abc)/cond_area; // heat transfer from inside to outside
-	        dpi_array[i+1] = dpi_array[i]+dpic;
-	        dpv_array[i+1] = dpv_array[i]+dpvc;
-	        dpa_array[i+1] = dpa_array[i];
-	        dpl_array[i+1] = dpl_array[i]+dplc;
-	        dpv_total[i+1] = dpv_total[i]+dpc;
-		}
-	    if (abs((qcond-q_total)/q_total)<0.001) {
+        }
+	      if (std::abs((qcond-q_total)/q_total)<0.001) {
 	        printf("Converged %d, %f, %f, %f \n", k, qcond, q_total, tguess);
 	        break;
-		}
-	    else if (qcond > q_total) {
+        }
+	      else if (qcond > q_total) {
 	        thigh = tguess;
-		}
-	    else {
+        }
+	      else {
 	        tlow = tguess;
-		}
-	    printf("iteration %d %f %f %f \n", k, qcond, q_total, tguess);
-	}
+        }
+	      printf("iteration %d %f %f %f \n", k, qcond, q_total, tguess);
+      }
+    }
+  }
+  for (int i=0; i<iconde; i++) {
+      std::cout << "x: " << distance[i] << " || T: " << tempx[i] << "\n";
+  }
 
   for (unsigned int i = 0; i < _num_samples; ++i)
   {
@@ -481,4 +566,6 @@ LeastSquaresFit::execute()
     _sample_x->push_back(x);
     _sample_y->push_back(y);
   }
+  old_q_total = q_total;
+  ++_iteration_counter;
 }

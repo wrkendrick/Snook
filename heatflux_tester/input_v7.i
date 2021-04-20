@@ -26,7 +26,7 @@
     type = FunctionDirichletBC
 	  variable = temp
 	  boundary = 'flux_0 flux_1 flux_2 flux_3 flux_4 flux_5 flux_6 flux_7 flux_8 flux_9'
-	  function = htpipe_function
+	  function = htpipe_function_control
   [../]
   [./BC_right]
     type = DirichletBC
@@ -52,13 +52,6 @@
 []
 
 [Functions]
-  [./htpipe_function]
-    type = VectorPostprocessorFunction
-    component = z
-	  argument_column = 'distance'
-    value_column = 'flux_aggregate'
-    vectorpostprocessor_name = adjusted_LSF
-  [../]
   [./htpipe_function_control]
     type = ParsedFunction
     value = '900.0'
@@ -71,7 +64,7 @@
   l_max_its = 10000
   l_tol = 1e-10
   line_search = none
-  nl_forced_its = 5
+  nl_forced_its = 3
 []
 
 [Postprocessors]
@@ -156,17 +149,6 @@
     type = VectorOfPostprocessors
     postprocessors = 'heatFlux_0 heatFlux_1 heatFlux_2 heatFlux_3 heatFlux_4 heatFlux_5 heatFlux_6 heatFlux_7 heatFlux_8 heatFlux_9'
     execute_on = 'INITIAL NONLINEAR FINAL'
-  [../]
-  [./adjusted_LSF]
-    type = LeastSquaresFit
-    vectorpostprocessor = flux_aggregate
-    x_name = 'distance'
-    y_name = 'flux_aggregate'
-    x_vals = '-0.5 -0.4 -0.3 -0.2 -0.1 0.0 0.1 0.2 0.3 0.4 0.5'
-    num_samples = 11
-    execute_on = 'INITIAL NONLINEAR FINAL'
-    initial_temp = 900.0
-    dampening_factor = 3.0
   [../]
 []
 
