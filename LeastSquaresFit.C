@@ -326,21 +326,21 @@ LeastSquaresFit::variable_creation()
 	//q_total = 15122; // total power in watts
 	q_total = 0;
 	double qe_array_setter [] = {1500.0,1500.0,1500.0,1500.0,1500.0,1500.0,1500.0,1500.0,1500.0,1500.0};
+  int len = *(&qe_array_setter + 1) - qe_array_setter;
   int len_v2 = _y_values.size();
-	int len = *(&qe_array_setter + 1) - qe_array_setter;
   qe_array.clear();
 	for (int i=0; i < len_v2; i++) {
-    std::cout << "i: " << i << "| q: " << _y_values[i] << "\n";
-    fflush(stdout);
+    printf("i: %i; flux: %f\n",i,_y_values[i]);
 		qe_array.push_back(std::abs(_y_values[i]));
-    std::cout << "i: " << i << "| x: " << _x_values[i] << "\n";
-    fflush(stdout);
 	}
 	q_total = accumulate(qe_array.begin(), qe_array.end(), q_total);
   double q_total_change_crit = 0.001;
-  if (old_q_total>1.0 && std::abs(q_total-old_q_total)/q_total>5.0){
+  if ((old_q_total > 1.0) && (std::abs(q_total-old_q_total)/q_total > 0.05)){
     q_total = ((q_total-old_q_total)/_dampening_factor) + old_q_total;
+    for (int i=0; i<len_v2; i++)
+      qe_array[i] = ((qe_array[i]-old_qe_array[i])/_dampening_factor) + qe_array[i];
   }
+  old_qe_array = qe_array;
 	if (q_total == 0) {
 		printf ("SOMETHING WENT WRONG");
 	}

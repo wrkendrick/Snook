@@ -161,6 +161,7 @@ protected:
   double av;
   double q_total;
   double old_q_total;
+  VectorPostprocessorValue old_qe_array;
   ///@}
   
   ///@{ fluids_properties() variables

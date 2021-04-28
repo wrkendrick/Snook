@@ -60,21 +60,22 @@ protected:
   const enum class ErrorLevel { INFO, WARNING, ERROR, NONE } _error_level;
 
   /// Postprocessor names
-  std::vector<std::string> _pp_names;
+  std::vector<VectorPostprocessorName> _vpp_names;
 
   // Number of postprocessors the expression depends on
-  unsigned int _pp_num;
+  unsigned int _vpp_num;
+  
+  /// Bool that is true if is converged
+  bool converged;
 
   /// Postprocessor values
-  std::vector<const PostprocessorValue *> _pp_values;
+  std::vector<VectorPostprocessorValue> _vpp_old;
+  std::vector<VectorPostprocessorValue> _vpp_old_holder;
+  std::vector<VectorPostprocessorValue> _vpp_old_old;
 
   std::string _expression;
-
-  /// Fparser object
-  FunctionParserBase<Real> _fp;
-
-  /// Fparser parameter buffer
-  std::vector<Real> _params;
+  
+  double _criterion;
 };
 
 #endif // LIBMESH_HAVE_FPARSER

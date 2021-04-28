@@ -69,9 +69,10 @@
   type = Steady
   solve_type = NEWTON
   l_max_its = 10000
-  l_tol = 1e-10
+  nl_max_its = 10000
+  l_tol = 1e-12
   line_search = none
-  nl_forced_its = 5
+  nl_forced_its = 10
 []
 
 [Postprocessors]
@@ -166,11 +167,24 @@
     num_samples = 11
     execute_on = 'INITIAL NONLINEAR FINAL'
     initial_temp = 900.0
-    dampening_factor = 3.0
+    dampening_factor = 20.0
+  [../]
+[]
+
+[UserObjects]
+  [./temperature_convergence]
+    type = Terminator
+    vpp_names = 'adjusted_LSF'
+    criterion = 10.0
+    execute_on = NONLINEAR
+    fail_mode = HARD
+    error_level = INFO
+    message = "CONVERGENCE HAS BEEN REACHED, RUN SHOULD END."
   [../]
 []
 
 [Outputs]
+  exodus = true
   [./console]
     type = Console
     output_nonlinear = True

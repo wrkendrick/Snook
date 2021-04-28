@@ -24,13 +24,10 @@ InputParameters
 Terminator::validParams()
 {
   InputParameters params = GeneralUserObject::validParams();
-  params.addClassDescription("Requests termination of the current solve based on the values of "
-                             "Postprocessor value(s) via a logical expression.");
-  params.addRequiredCustomTypeParam<std::string>(
-      "expression",
-      "FunctionExpression",
-      "FParser expression to process Postprocessor values into a boolean value. "
-      "Termination of the simulation occurs when this returns true.");
+  params.addClassDescription("Adjusted Terminator for HTPIPE purposes.");
+  params.addRequiredParam<std::vector<VectorPostprocessorName>>(
+      "vpp_names", "The list of name of VectorPostProcessesors to watch for convergence");
+  params.addRequiredParam<double>("criterion", "Convergence criterion");
   MooseEnum failModeOption("HARD SOFT", "HARD");
   params.addParam<MooseEnum>(
       "fail_mode",
@@ -45,6 +42,7 @@ Terminator::validParams()
       errorLevel,
       "The error level for the message. A level of ERROR will always lead to a hard "
       "termination of the entire simulation.");
+  
   return params;
 }
 
@@ -54,10 +52,8 @@ Terminator::Terminator(const InputParameters & parameters)
     _error_level(isParamValid("error_level")
                      ? getParam<MooseEnum>("error_level").getEnum<ErrorLevel>()
                      : ErrorLevel::NONE),
-    _pp_names(),
-    _pp_values(),
-    _expression(getParam<std::string>("expression")),
-    _fp()
+    _vpp_names(getParam<std::vector<VectorPostprocessorName>>("vpp_names")),
+    _criterion(getParam<double>("criterion"))
 {
   // sanity check the parameters
   if (_error_level == ErrorLevel::ERROR && _fail_mode == FailMode::SOFT)
@@ -65,20 +61,10 @@ Terminator::Terminator(const InputParameters & parameters)
   if (_error_level != ErrorLevel::NONE && !isParamValid("message"))
     paramError("error_level",
                "If this parameter is specified a `message` must be supplied as well.");
-
-  // build the expression object
-  if (_fp.ParseAndDeduceVariables(_expression, _pp_names) >= 0)
-    mooseError(std::string("Invalid function\n" + _expression + "\nin Terminator.\n") +
-               _fp.ErrorMsg());
-
-  _pp_num = _pp_names.size();
-  _pp_values.resize(_pp_num);
-
-  // get all necessary postprocessors
-  for (unsigned int i = 0; i < _pp_num; ++i)
-    _pp_values[i] = &getPostprocessorValueByName(_pp_names[i]);
-
-  _params.resize(_pp_num);
+  _vpp_num = _vpp_names.size();
+  _vpp_old.resize(_vpp_num);
+  _vpp_old_holder.resize(_vpp_num);
+  _vpp_old_old.resize(_vpp_num);
 }
 
 void
@@ -110,16 +96,35 @@ Terminator::handleMessage()
 void
 Terminator::execute()
 {
-  // copy current Postprocessor values into the FParser parameter buffer
-  for (unsigned int i = 0; i < _pp_num; ++i)
-    _params[i] = *(_pp_values[i]);
+  converged = true;
+  for (unsigned int i = 0; i < _vpp_num; ++i) {
+    _fe_problem.terminateSolve();
+    std::cout << _vpp_names[i] << "\n";
+    const VectorPostprocessorValue* value_column = &getVectorPostprocessorValueByName(_vpp_names[i], "flux_aggregate");
+    VectorPostprocessorValue old_old_value_column = _vpp_old_old[i];
+    if (old_old_value_column.size() == 0)
+      old_old_value_column.resize(value_column->size());
+    _vpp_old_holder[i] = *value_column;
+    for (int j=0; j < value_column->capacity(); j++) {
+      std::cout << j << ": NEW " << value_column->at(j) << "\n";
+      std::cout << j << ": OLD_OLD " << old_old_value_column[j] << "\n";
+      double check_val = std::abs(value_column->at(j) - old_old_value_column[j]);
+      if (check_val > _criterion) {
+        converged = false;
+        break;
+      }
+    }
+  }
+  _vpp_old_old = _vpp_old;
+  _vpp_old = _vpp_old_holder;
 
   // request termination of the run or timestep in case the expression evaluates to true
-  if (_fp.Eval(_params.data()) != 0)
+  if (converged)
   {
     if (_fail_mode == FailMode::HARD)
     {
-      handleMessage();
+      printf("REACHED HERE WHERE IT SHOULD HAVE\n");
+      //handleMessage();
       _fe_problem.terminateSolve();
     }
     else
